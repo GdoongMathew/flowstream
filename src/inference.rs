@@ -37,7 +37,7 @@ fn image_serialize<S>(
 where
     S: Serializer,
 {
-    let mut state = serializer.serialize_struct("ImageBuffer", 2)?;
+    let mut state = serializer.serialize_struct("ImageBuffer", 3)?;
     state.serialize_field("width", &image.width())?;
     state.serialize_field("height", &image.height())?;
     state.serialize_field("data", &image.as_raw())?;
@@ -50,20 +50,35 @@ fn image_deserialize<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    let map = HashMap::<String, Vec<u8>>::deserialize(deserializer)?;
+    let mut map: HashMap<String, serde_json::Value> = HashMap::deserialize(deserializer)?;
     let width = map
         .get("width")
-        .and_then(|v| v.first())
-        .ok_or_else(|| serde::de::Error::missing_field("width"))?;
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| serde::de::Error::missing_field("width"))? as u32;
     let height = map
         .get("height")
-        .and_then(|v| v.first())
-        .ok_or_else(|| serde::de::Error::missing_field("height"))?;
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| serde::de::Error::missing_field("height"))? as u32;
     let data = map
         .get("data")
+        .and_then(|v| v.as_array())
+        .and_then(|v| {
+            // Convert the array of values to a flat Vec<u8>
+            let mut flat_data = Vec::with_capacity(v.len() * 3);
+            for value in v {
+                if let Some(byte) = value.as_u64() {
+                    flat_data.push(byte as u8);
+                } else {
+                    return None; // Invalid data type
+                }
+            }
+            Some(flat_data)
+        })
         .ok_or_else(|| serde::de::Error::missing_field("data"))?;
-    let image = ImageBuffer::from_raw(*width as u32, *height as u32, data.clone())
-        .ok_or_else(|| serde::de::Error::custom("Failed to create ImageBuffer from raw data"))?;
+
+    let image = ImageBuffer::from_vec(width, height, data)
+        .ok_or_else(|| serde::de::Error::custom("Invalid image data"))?;
+
     Ok(image)
 }
 
@@ -86,17 +101,19 @@ impl InferItem {
 mod inference_tests {
     use super::InferItem;
     use image::ImageBuffer;
+    use serde_json;
     use serde_test::{Token, assert_tokens};
 
     const TEST_ID: &str = "123e4567-e89b-12d3-a456-426614174000";
-    const TEST_ID_STR : &str = "123e4567e89b12d3a456426614174000";
+    const TEST_ID_STR: &str = "123e4567e89b12d3a456426614174000";
 
     #[test]
     fn test_infer_item_serialization() {
-        let item = InferItem::new(Option::Some(
-            uuid::Uuid::parse_str(TEST_ID).unwrap()
-        ), ImageBuffer::new(4, 4), true);
-
+        let item = InferItem::new(
+            Some(uuid::Uuid::parse_str(TEST_ID).unwrap()),
+            ImageBuffer::new(4, 4),
+            true,
+        );
         assert_tokens(
             &item,
             &[
@@ -112,11 +129,11 @@ mod inference_tests {
                     len: 3,
                 },
                 Token::Str("width"),
-                Token::U64(2),
+                Token::U32(4),
                 Token::Str("height"),
-                Token::U64(2),
+                Token::U32(4),
                 Token::Str("data"),
-                Token::Seq { len: Some(12) },
+                Token::Seq { len: Some(48) },
                 Token::Bytes(&[]),
                 Token::SeqEnd,
                 Token::StructEnd,
@@ -127,5 +144,17 @@ mod inference_tests {
                 Token::StructEnd,
             ],
         );
+    }
+
+    #[test]
+    fn test_infer_item_serde_equal() {
+        let item = InferItem::new(
+            Some(uuid::Uuid::parse_str(TEST_ID).unwrap()),
+            ImageBuffer::new(4, 4),
+            true,
+        );
+        let serialized = serde_json::to_string(&item).unwrap();
+        let deserialized: InferItem = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(item, deserialized);
     }
 }
