@@ -87,7 +87,6 @@ mod inference_tests {
     use super::InferItem;
     use image::ImageBuffer;
     use serde_test::{Token, assert_tokens};
-    use uuid::fmt::Simple;
 
     const TEST_ID: &str = "123e4567-e89b-12d3-a456-426614174000";
     const TEST_ID_STR : &str = "123e4567e89b12d3a456426614174000";
