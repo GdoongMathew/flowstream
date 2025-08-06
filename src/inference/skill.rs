@@ -1,9 +1,8 @@
 use super::item::InferItem;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::result::Result;
 
-pub trait Skill<'s>: Serialize + Deserialize<'s> {
+pub trait Skill {
     fn ready(&self) -> bool;
     fn set_ready(&mut self, ready: bool);
 
