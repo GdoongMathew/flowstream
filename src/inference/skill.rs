@@ -40,10 +40,11 @@ pub trait Skill<'s>: Serialize + Deserialize<'s> {
     }
     fn _process(&self, item: &mut InferItem) -> Result<(), &'static str>;
 
-    fn process(&self, item: &mut InferItem) -> Result<(), &'static str> {
-        if !self.ready() {
-            return Err("Skill is not ready");
+    fn process(&self, item: &mut InferItem) {
+        let result = self._process(item);
+        match result {
+            Ok(_) => item.result = Some(Ok(())),
+            Err(e) => item.result = Some(Err(e.to_string())),
         }
-        self._process(item)
     }
 }
